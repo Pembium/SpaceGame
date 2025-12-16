@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Ship Builder (Click-to-Place)</title>
+  <link rel="stylesheet" href="style.css" />
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
+</head>
+<body>
+<header>
+  <div>
+    <h1>Ship Builder</h1>
+    <div class="sub" id="modeLine">Select a room in Inventory, then click a grid cell to place it.</div>
+  </div>
+  <div class="row">
+    <button class="btn" id="btnExport">Export JSON</button>
+    <button class="btn" id="btnImport">Import JSON</button>
+    <button class="btn danger" id="btnClear">Clear Ship</button>
+  </div>
+</header>
+
+<div class="wrap">
+  <!-- LEFT: Catalog -->
+  <section class="panel">
+    <div class="hd">
+      <h2>Room Catalog</h2>
+      <span class="tag">Add rooms into inventory</span>
+    </div>
+    <div class="bd">
+      <div class="row" style="margin-bottom:10px;">
+        <label for="filter">Filter</label>
+        <input id="filter" type="text" placeholder="engine, shield, cockpit..." style="flex:1; min-width:180px;">
+      </div>
+      <div class="catalog" id="catalog"></div>
+      <div class="hint">
+        <b>Workflow:</b> (1) Add rooms → (2) Select room in Inventory → (3) Click grid cell to place.
+      </div>
+    </div>
+  </section>
+
+  <!-- CENTER: Grid -->
+  <section class="panel gridWrap">
+    <div class="gridTools">
+      <div class="row">
+        <label>Grid</label>
+        <input id="rows" type="number" min="1" max="20" value="6" />
+        <input id="cols" type="number" min="1" max="20" value="8" />
+        <button class="btn ok" id="btnResize">Resize</button>
+      </div>
+      <div class="row">
+        <button class="btn" id="btnCancelPlace">Cancel Placement</button>
+        <span class="tag">Click tile for stats</span>
+      </div>
+    </div>
+    <div class="grid" id="grid"></div>
+  </section>
+
+  <!-- RIGHT: Inventory + Details -->
+  <section class="panel">
+    <div class="hd">
+      <h2>Inventory & Room Details</h2>
+      <span class="tag">Select to place</span>
+    </div>
+    <div class="bd">
+      <div class="row" style="justify-content:space-between; margin-bottom:8px;">
+        <div class="row" style="gap:8px;">
+          <span class="tag">Core check</span>
+          <span id="coreStatus" class="mono">—</span>
+        </div>
+        <button class="btn" id="btnAutoCore">Add Core Set</button>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="row" style="justify-content:space-between; margin-bottom:8px;">
+        <div>
+          <span class="tag">Ship Value</span>
+          <span id="shipValue" class="mono" style="color:var(--accent); font-weight:700;">0 credits</span>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="hint" id="placeHint" style="margin-top:0;">
+        <b>Placement:</b> Select a room below, then click a grid cell.
+      </div>
+
+      <div class="catalog" id="inventory"></div>
+
+      <div class="divider"></div>
+
+      <div id="details">
+        <div class="warn">Click a placed room to view its full stats.</div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script src="room-library.js"></script>
+<script src="script.js"></script>
+</body>
+</html>

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="256" height="256" rx="48" fill="#0B1020"/>
+  <g filter="url(#glow)">
+    <path d="M128 36c24 36 24 72 0 108c-24-36-24-72 0-108z" fill="#6EA8FF"/>
+    <circle cx="128" cy="144" r="10" fill="#6EA8FF"/>
+    <path d="M98 156c30 18 30 36 0 54c-10-22-10-38 0-54z" fill="#58D39C"/>
+    <path d="M158 156c-30 18-30 36 0 54c10-22 10-38 0-54z" fill="#58D39C"/>
+  </g>
+  <defs>
+    <filter id="glow" x="0" y="0" width="256" height="256" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse">
+      <feGaussianBlur stdDeviation="4" result="blur"/>
+    </filter>
+  </defs>
+</svg>
