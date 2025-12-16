@@ -2,18 +2,18 @@
 window.ROOM_LIBRARY = [
   // Engines
   { id:"eng_standard", type:"Engine", letter:"E", name:"Standard Thruster Engine", hpMax:5, cost:30, maneuverability:0,
-    traits:["Engine Speed +2"], disabled:["Ship cannot Maneuver","Defense Value −2"],
+    traits:["Engine Speed +6"], disabled:["Ship cannot Maneuver","Defense Value −2"],
     stabilized:["Ship may Maneuver at +2 difficulty"], notes:"Baseline engine for small ships and freighters." },
-  { id:"eng_high_output", type:"Engine", letter:"E", name:"High-Output Drive", hpMax:6, cost:45, maneuverability:1,
-    traits:["Engine Speed +3","+1 to Initiative rolls"], disabled:["Defense Value −3","Initiative rolls automatically fail"],
+  { id:"eng_high_output", type:"Engine", letter:"E", name:"High-Output Drive", hpMax:6, cost:45, maneuverability:3,
+    traits:["Engine Speed +9","+1 to Initiative rolls"], disabled:["Defense Value −3","Initiative rolls automatically fail"],
     stabilized:["Initiative rolls at +2 difficulty"], notes:"Fast interceptors, smugglers, elite craft." },
-  { id:"eng_maneuver_thrusters", type:"Engine", letter:"E", name:"Maneuvering Thrusters", hpMax:4, cost:35, maneuverability:2,
+  { id:"eng_maneuver_thrusters", type:"Engine", letter:"E", name:"Maneuvering Thrusters", hpMax:4, cost:35, maneuverability:6,
     traits:["+2 Defense Value against attacks","Maneuver actions gain +1 effect"], disabled:["Defense Value −2"],
     stabilized:["Defense penalty reduced to −1"], notes:"Dogfighting and evasive ships." },
 
   // Shields
-  { id:"sh_standard", type:"Shield", letter:"S", name:"Standard Shield Generator", hpMax:5, cost:28, defense:3,
-    traits:["Shield Value 3"], disabled:["Shield Value reduced to 0","Shields do not regenerate"],
+  { id:"sh_standard", type:"Shield", letter:"S", name:"Standard Shield Generator", hpMax:5, cost:28, defense:2,
+    traits:["Shield Value 2"], disabled:["Shield Value reduced to 0","Shields do not regenerate"],
     stabilized:["Shield Value remains 0","Regeneration resumes next turn"], notes:"Baseline defense." },
   { id:"sh_reinforced", type:"Shield", letter:"S", name:"Reinforced Shield Generator", hpMax:6, cost:40, defense:4,
     traits:["Shield Value 4"], disabled:["Shield Value reduced to 1","No regeneration"],
@@ -61,16 +61,19 @@ window.ROOM_LIBRARY = [
     traits:["Scan grants +1 additional effect (table rule)"], disabled:["Targeted attacks unavailable"],
     stabilized:["Scan yields only one effect"], notes:"Precision targeting and intel." },
 
-  // Weapons (mounts)
-  { id:"wp_light_mount", type:"Weapon", letter:"W", name:"Light Weapon Mount", hpMax:4, cost:24, damage:2,
-    traits:["Holds 1 light weapon"], disabled:["Weapon cannot fire"],
-    stabilized:["Weapon remains offline until repaired after combat"], notes:"Common small weapon hardpoint." },
-  { id:"wp_heavy_mount", type:"Weapon", letter:"W", name:"Heavy Weapon Mount", hpMax:5, cost:38, damage:4,
-    traits:["Holds 1 heavy weapon"], disabled:["Weapon explodes: adjacent section takes 1 damage (table rule)"],
-    stabilized:["Explosion prevented"], notes:"High-risk, high-reward mount." },
-  { id:"wp_turret", type:"Weapon", letter:"T", name:"Turret Mount", hpMax:4, cost:32, damage:3,
-    traits:["Can fire at any target (table rule)"], disabled:["Cannot fire this combat"],
-    stabilized:["Limited firing arcs (table rule)"], notes:"Flexible but fragile." },
+  // Weapons
+  { id:"wp_laser", type:"Weapon", letter:"W", name:"Laser Cannon", hpMax:4, cost:30, damage:3, class:"Science",
+    traits:["+1 to hit rolls"], disabled:["Weapon cannot fire"],
+    stabilized:["Weapon remains offline until repaired after combat"], notes:"Precision energy weapon." },
+  { id:"wp_gatling", type:"Weapon", letter:"W", name:"Gatling Gun", hpMax:5, cost:28, damage:2, class:"Kinetic",
+    traits:["Can attack twice at -1 effect each"], disabled:["Weapon jammed","Cannot fire"],
+    stabilized:["Single shot only"], notes:"High rate of fire ballistic weapon." },
+  { id:"wp_plasma", type:"Weapon", letter:"W", name:"Plasma Projector", hpMax:4, cost:42, damage:4, class:"Science",
+    traits:["Ignore 1 point of shield"], disabled:["Weapon overheated","Cannot fire this combat"],
+    stabilized:["Reduced to half damage"], notes:"Devastating short-range energy weapon." },
+  { id:"wp_missile", type:"Weapon", letter:"W", name:"Missile Launcher", hpMax:5, cost:35, damage:5, class:"Kinetic",
+    traits:["+2 damage on hit","Limited ammo (table rule)"], disabled:["No missiles remaining"],
+    stabilized:["Half damage, no bonus"], notes:"Heavy ordnance with tracking capability." },
 
   // Power
   { id:"pw_core", type:"Power", letter:"P", name:"Power Core", hpMax:6, cost:55, battery:100,

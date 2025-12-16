@@ -5,12 +5,18 @@ const templateById = (id) => (window.ROOM_LIBRARY || []).find(r => r.id === id) 
 
 // ---------- State ----------
 const state = {
-  grid: { rows:6, cols:8, cells:[] }, // each cell: null or instanceId
+  grid: { rows:5, cols:5, cells:[] }, // each cell: null or instanceId
   inventory: [], // array of instances (unplaced)
   placed: new Map(), // instanceId -> instance
   selectedCellIndex: null,
   selectedTemplateId: null, // selection for click-to-place
-  pilotSkill: 0 // pilot skill level for maneuverability calculation
+  pilotSkill: 0, // pilot skill level for maneuverability calculation
+  // --- Ship-level battery for surges (separate from room battery stats)
+  shipSurge: 0, // current surge energy (max = number of placed rooms)
+  // --- Ship size limits: permissible max rooms without cockpit upgrade
+  shipMaxRooms: 6, // allowed caps: 6, 9, 12
+  // --- Track which rooms are tuned
+  tunedRooms: new Set() // instanceIds of rooms with active tuning
 };
 
 function makeInstance(templateId){
@@ -29,6 +35,7 @@ function makeInstance(templateId){
     defense: t.defense ?? 0,
     battery: t.battery ?? 0,
     maneuverability: t.maneuverability ?? 0,
+    class: t.class ?? "",
     traits: [...t.traits],
     disabled: [...t.disabled],
     stabilized: [...t.stabilized],
@@ -54,6 +61,23 @@ function placedCounts(){
     counts.set(inst.type, (counts.get(inst.type) ?? 0) + 1);
   }
   return counts;
+}
+
+function isCockpitUpgraded(){
+  // Heuristic: any placed cockpit with traits or name indicating upgrade
+  for(const inst of state.placed.values()){
+    if(inst.type === "Cockpit"){
+      const name = (inst.name || "").toLowerCase();
+      const traits = (inst.traits || []).map(x => String(x).toLowerCase());
+      if(
+        name.includes("upgrade") || name.includes("advanced") || name.includes("mk ii") ||
+        traits.some(t => t.includes("upgrade") || t.includes("advanced"))
+      ){
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 function coreStatusText(){
@@ -83,26 +107,45 @@ function shipStats(){
     totalBattery += (inst.battery ?? 0);
     totalManeuverability += (inst.maneuverability ?? 0);
     
+    // Add engine speed (trait-based) to maneuverability
+    if(inst.type === "Engine" && inst.traits){
+      for(const trait of inst.traits){
+        const match = trait.match(/Engine Speed \+(\d+)/);
+        if(match){
+          totalManeuverability += parseInt(match[1]);
+        }
+      }
+    }
+    
     if(inst.type === "Weapon" && (inst.damage ?? 0) > 0){
       weapons.push({
         name: inst.name,
         damage: inst.damage,
         hp: inst.hp,
-        hpMax: inst.hpMax
+        hpMax: inst.hpMax,
+        class: inst.class || ""
       });
     }
   }
   
-  const pilotManeuverability = state.pilotSkill + totalManeuverability;
+  // Calculate size penalty: based on number of placed rooms
+  const sizePenalty = state.placed.size;
+  
+  const pilotManeuverability = Math.max(0, state.pilotSkill + totalManeuverability - sizePenalty);
+  const shipSurgeMax = state.placed.size; // surge max = number of placed rooms
   
   return {
     hp: totalHp,
     maxHp: maxHp,
     defense: totalDefense,
     battery: totalBattery,
-    maneuverability: totalManeuverability,
+    maneuverability: totalManeuverability - sizePenalty,
     pilotManeuverability: pilotManeuverability,
-    weapons: weapons
+    weapons: weapons,
+    surge: state.shipSurge,
+    surgeMax: shipSurgeMax,
+    roomCap: state.shipMaxRooms,
+    cockpitUpgraded: isCockpitUpgraded()
   };
 }
 
@@ -125,6 +168,17 @@ function placeSelectedIntoCell(cellIndex){
   const inst = takeOneFromInventory(tid);
   if(!inst){
     alert("No remaining rooms of that type in Inventory. Add more first.");
+    return;
+  }
+
+  // Enforce ship size (room count) cap unless cockpit is upgraded
+  const currentRooms = state.placed.size;
+  const cockpitOk = isCockpitUpgraded();
+  const willReplace = Boolean(state.grid.cells[cellIndex]);
+  if(!cockpitOk && !willReplace && currentRooms >= state.shipMaxRooms){
+    alert(`Room cap reached (${state.shipMaxRooms}). Upgrade/replace the Cockpit to increase capacity (9 or 12).`);
+    // put inst back into inventory
+    state.inventory.push(inst);
     return;
   }
 
@@ -159,6 +213,9 @@ function exportJson(){
     inventory: state.inventory,
     placed: [...state.placed.entries()],
     pilotSkill: state.pilotSkill,
+    shipSurge: state.shipSurge,
+    shipMaxRooms: state.shipMaxRooms,
+    tunedRooms: [...state.tunedRooms],
     selectedTemplateId: null
   }, null, 2);
 }
@@ -173,6 +230,9 @@ function importJson(text){
   state.grid.cells = obj.grid.cells.slice();
   state.inventory = Array.isArray(obj.inventory) ? obj.inventory : [];
   state.pilotSkill = obj.pilotSkill ?? 0;
+  state.shipSurge = obj.shipSurge ?? 0;
+  state.shipMaxRooms = obj.shipMaxRooms ?? state.shipMaxRooms;
+  state.tunedRooms = new Set(Array.isArray(obj.tunedRooms) ? obj.tunedRooms : []);
   
   // Restore inventory items with missing fields from templates
   for(const inst of state.inventory){
@@ -208,6 +268,29 @@ function importJson(text){
   state.selectedTemplateId = null;
 }
 
+// ---------- Surge / tuning ----------
+function resetSurge(){
+  state.shipSurge = state.placed.size; // surge = number of placed rooms
+}
+
+function tuneRoom(instanceId, options = { cost: 10, boost: { maneuverability: 1 } }){
+  const inst = state.placed.get(instanceId);
+  if(!inst) return false;
+  const cost = Number(options.cost) || 0;
+  
+  // Ensure surge is at least at the room count (auto-restore if needed)
+  const maxSurge = state.placed.size;
+  if(state.shipSurge > maxSurge) state.shipSurge = maxSurge;
+  
+  if(state.shipSurge < cost){
+    alert(`Not enough surge energy. You have ${state.shipSurge}, need ${cost}. Click 'Reset Surge' to refill.`);
+    return false;
+  }
+  state.shipSurge -= cost;
+  // Tuning is tracked in state.tunedRooms set
+  return true;
+}
+
 // ---------- Rendering ----------
 const elCatalog = document.getElementById("catalog");
 const elInventory = document.getElementById("inventory");
@@ -216,6 +299,14 @@ const elDetails = document.getElementById("details");
 const elCoreStatus = document.getElementById("coreStatus");
 const elModeLine = document.getElementById("modeLine");
 const elPlaceHint = document.getElementById("placeHint");
+const elSummary = document.getElementById("summary");
+const elShipSize = document.getElementById("shipSize");
+const elBtnResetSurge = document.getElementById("btnResetSurge");
+const elBtnTuneSelected = document.getElementById("btnTuneSelected");
+const elShipLayout = document.getElementById("shipLayout");
+const elRoomsManagement = document.getElementById("roomsManagement");
+const elCatalogPanel = document.getElementById("panelCatalog");
+const elToggleCatalog = document.getElementById("btnToggleCatalog");
 
 function renderAll(){
   renderCatalog();
@@ -223,6 +314,9 @@ function renderAll(){
   renderGrid();
   renderCore();
   renderValue();
+  renderSummary();
+  renderShipLayout();
+  renderRoomsManagement();
   renderDetails();
   renderModeLine();
 }
@@ -248,13 +342,213 @@ function renderCore(){
   elCoreStatus.textContent = coreStatusText();
 }
 
+function renderSummary(){
+  if(!elSummary) return;
+  const stats = shipStats();
+  const value = placedValue();
+  const counts = placedCounts();
+  const coreOk = ["Engine","Shield","Cockpit","Life Support"].every(t => (counts.get(t) ?? 0) >= 1);
+
+  let html = `
+    <div class="kvWide" style="margin-bottom:8px;">
+      <div class="kvItem"><div class="k">Total Value</div><div class="v" style="color:var(--accent); font-weight:700;">${value} credits</div></div>
+      <div class="kvItem"><div class="k">Health</div><div class="v">${stats.hp} / ${stats.maxHp} HP</div></div>
+      <div class="kvItem"><div class="k">Shields</div><div class="v">${stats.defense}</div></div>
+      <div class="kvItem"><div class="k">Rooms</div><div class="v">${state.placed.size} / ${stats.roomCap} ${stats.cockpitUpgraded ? '(Cockpit upgraded)' : ''}</div></div>
+      <div class="kvItem"><div class="k">Ship Surge</div><div class="v">${stats.surge} / ${stats.surgeMax}</div></div>
+      <div class="kvItem"><div class="k">Room Battery</div><div class="v">${stats.battery}</div></div>
+      <div class="kvItem"><div class="k">Core Status</div><div class="v">${coreOk ? '<span style="color:var(--ok);">✓ OK</span>' : '<span style="color:var(--danger);">✗ MISSING</span>'}</div></div>
+      <div class="kvItem"><div class="k">Ship Maneuverability</div><div class="v">${stats.maneuverability}</div></div>
+      <div class="kvItem"><div class="k">Pilot Skill</div><div class="v"><input id="pilotSkillInput" type="number" min="0" max="10" value="${state.pilotSkill}" style="width:60px;" /></div></div>
+      <div class="kvItem"><div class="k">Total Maneuverability</div><div class="v" style="color:var(--accent); font-weight:700;">${stats.pilotManeuverability}</div></div>
+    </div>`;
+
+  if(stats.weapons.length > 0){
+    html += `<div class="small" style="margin-top:8px; margin-bottom:4px;"><b>Weapons (${stats.weapons.length})</b></div>`;
+    html += `<ul class="list" style="margin-top:2px;">`;
+    for(const w of stats.weapons){
+      const status = w.hp > 0 ? `<span style="color:var(--ok);">Online</span>` : `<span style="color:var(--danger);">Offline</span>`;
+      const classTag = w.class ? `<span class="tag" style="margin-left:6px;">${w.class}</span>` : '';
+      html += `<li>${w.name}${classTag}: ${w.damage} dmg (${w.hp}/${w.hpMax} HP) ${status}</li>`;
+    }
+    html += `</ul>`;
+  }
+
+  elSummary.innerHTML = html;
+
+  const pilotSkillInput = document.getElementById("pilotSkillInput");
+  if(pilotSkillInput){
+    pilotSkillInput.addEventListener("input", (e) => {
+      const v = Number(e.target.value);
+      state.pilotSkill = Math.max(0, Math.min(10, isFinite(v) ? v : state.pilotSkill));
+      renderSummary();
+    });
+  }
+
+  // Sync ship size selector to state
+  if(elShipSize){
+    elShipSize.value = String(state.shipMaxRooms);
+  }
+}
+
+function renderShipLayout(){
+  if(!elShipLayout) return;
+  
+  // Only show cells that have rooms (compact view)
+  if(state.placed.size === 0){
+    elShipLayout.innerHTML = '<div class="warn" style="text-align:center;">No rooms placed</div>';
+    return;
+  }
+  
+  // Find bounding box of placed rooms
+  let minRow = Infinity, maxRow = -Infinity, minCol = Infinity, maxCol = -Infinity;
+  for(let i=0; i<state.grid.cells.length; i++){
+    if(state.grid.cells[i] !== null){
+      const {r, c} = cellToRC(i);
+      minRow = Math.min(minRow, r);
+      maxRow = Math.max(maxRow, r);
+      minCol = Math.min(minCol, c);
+      maxCol = Math.max(maxCol, c);
+    }
+  }
+  
+  const cols = maxCol - minCol + 1;
+  const rows = maxRow - minRow + 1;
+  
+  elShipLayout.style.gridTemplateColumns = `repeat(${cols}, minmax(32px, 1fr))`;
+  elShipLayout.innerHTML = "";
+  
+  for(let r = minRow; r <= maxRow; r++){
+    for(let c = minCol; c <= maxCol; c++){
+      const i = r * state.grid.cols + c;
+      const has = state.grid.cells[i] !== null;
+      const cell = document.createElement("div");
+      cell.className = "miniCell " + (has ? "" : "empty");
+      
+      if(has){
+        const instanceId = state.grid.cells[i];
+        const inst = state.placed.get(instanceId);
+        if(inst){
+          cell.textContent = inst.letter;
+          if(state.tunedRooms.has(instanceId)){
+            cell.classList.add("tuned");
+          }
+        }
+      }
+      
+      elShipLayout.appendChild(cell);
+    }
+  }
+}
+
+function renderRoomsManagement(){
+  if(!elRoomsManagement) return;
+  elRoomsManagement.innerHTML = "";
+
+  if(state.placed.size === 0){
+    const empty = document.createElement("div");
+    empty.className = "warn";
+    empty.textContent = "No rooms placed yet. Add rooms from the catalog and place them on the grid.";
+    elRoomsManagement.appendChild(empty);
+    return;
+  }
+
+  const rooms = [...state.placed.values()].sort((a, b) => a.name.localeCompare(b.name));
+
+  for(const inst of rooms){
+    const card = document.createElement("div");
+    card.className = "roomCard" + (state.tunedRooms.has(inst.instanceId) ? " tuned" : "");
+
+    const header = document.createElement("div");
+    header.className = "roomHeader";
+
+    const titleDiv = document.createElement("div");
+    const title = document.createElement("p");
+    title.className = "roomTitle";
+    title.textContent = inst.name;
+    const letter = document.createElement("span");
+    letter.className = "tag";
+    letter.textContent = inst.letter;
+    letter.style.marginLeft = "6px";
+    titleDiv.appendChild(title);
+    titleDiv.appendChild(letter);
+
+    const tuneBtn = document.createElement("button");
+    tuneBtn.className = "btn" + (state.tunedRooms.has(inst.instanceId) ? " sel" : "");
+    tuneBtn.textContent = state.tunedRooms.has(inst.instanceId) ? "Tuned" : "Tune";
+    tuneBtn.style.fontSize = "11px";
+    tuneBtn.style.padding = "4px 8px";
+    tuneBtn.onclick = () => {
+      if(state.tunedRooms.has(inst.instanceId)){
+        state.tunedRooms.delete(inst.instanceId);
+      } else {
+        const ok = tuneRoom(inst.instanceId, { cost: 1, boost: { maneuverability: 1 } });
+        if(ok){
+          state.tunedRooms.add(inst.instanceId);
+        }
+      }
+      renderAll();
+    };
+
+    header.appendChild(titleDiv);
+    header.appendChild(tuneBtn);
+    card.appendChild(header);
+
+    const hpDiv = document.createElement("div");
+    hpDiv.className = "roomHP";
+    const hpLabel = document.createElement("span");
+    hpLabel.textContent = "HP:";
+    hpLabel.className = "small";
+    const hpInput = document.createElement("input");
+    hpInput.type = "number";
+    hpInput.min = "0";
+    hpInput.max = String(inst.hpMax);
+    hpInput.value = String(inst.hp);
+    hpInput.addEventListener("input", (e) => {
+      const v = Number(e.target.value);
+      inst.hp = Math.max(0, Math.min(inst.hpMax, isFinite(v) ? v : inst.hp));
+      renderGrid();
+      renderShipLayout();
+      renderSummary();
+      renderRoomsManagement();
+    });
+    const hpMax = document.createElement("span");
+    hpMax.className = "small";
+    hpMax.textContent = `/ ${inst.hpMax}`;
+    hpDiv.appendChild(hpLabel);
+    hpDiv.appendChild(hpInput);
+    hpDiv.appendChild(hpMax);
+    card.appendChild(hpDiv);
+
+    const status = document.createElement("div");
+    status.className = "small";
+    status.innerHTML = `<b>Status:</b> ${inst.hp > 0 ? '<span style="color:var(--ok);">Online</span>' : '<span style="color:var(--danger);">Offline</span>'}`;
+    card.appendChild(status);
+
+    if(inst.traits && inst.traits.length > 0){
+      const abilities = document.createElement("div");
+      abilities.className = "abilities";
+      abilities.innerHTML = `<b>Abilities:</b><ul class="list" style="margin:4px 0 0 0;">${inst.traits.map(t => `<li>${escapeHtml(t)}</li>`).join("")}</ul>`;
+      card.appendChild(abilities);
+    }
+
+    if(inst.hp === 0 && inst.disabled && inst.disabled.length > 0){
+      const disabled = document.createElement("div");
+      disabled.className = "abilities";
+      disabled.innerHTML = `<b style="color:var(--danger);">Disabled:</b><ul class="list" style="margin:4px 0 0 0;">${inst.disabled.map(t => `<li>${escapeHtml(t)}</li>`).join("")}</ul>`;
+      card.appendChild(disabled);
+    }
+
+    elRoomsManagement.appendChild(card);
+  }
+}
+
 function renderCatalog(){
-  const q = (document.getElementById("filter").value || "").trim().toLowerCase();
+  const q = (document.getElementById("filter").value || "").trim();
   const list = (window.ROOM_LIBRARY || [])
     .filter(t => {
       if(!q) return true;
-      const hay = `${t.type} ${t.name} ${t.letter} ${(t.traits||[]).join(" ")}`.toLowerCase();
-      return hay.includes(q);
+      return t.type === q;
     })
     .sort((a,b) => (a.type === b.type ? a.name.localeCompare(b.name) : a.type.localeCompare(b.type)));
 
@@ -474,55 +768,14 @@ function escapeHtml(s){
 
 function renderDetails(){
   const idx = state.selectedCellIndex;
-  
-  // Always show ship summary at the top
-  const stats = shipStats();
-  const value = placedValue();
-  const counts = placedCounts();
-  const coreOk = ["Engine","Shield","Cockpit","Life Support"].every(t => (counts.get(t) ?? 0) >= 1);
-  
-  let summaryHtml = `
-    <div style="background: rgba(15,23,48,0.6); border-radius:10px; padding:10px; margin-bottom:10px; border:1px solid rgba(110,168,255,0.3);">
-      <div class="small" style="margin-bottom:6px;"><b>Ship Summary</b></div>
-      <div class="kv">
-        <div class="k">Total Value</div>
-        <div class="v" style="color:var(--accent); font-weight:700;">${value} credits</div>
-        <div class="k">Health</div>
-        <div class="v">${stats.hp} / ${stats.maxHp} HP</div>
-        <div class="k">Shields</div>
-        <div class="v">${stats.defense}</div>
-        <div class="k">Battery</div>
-        <div class="v">${stats.battery} / 100</div>
-        <div class="k">Core Status</div>
-        <div class="v">${coreOk ? '<span style="color:var(--ok);">✓ OK</span>' : '<span style="color:var(--danger);">✗ MISSING</span>'}</div>
-        <div class="k">Ship Maneuverability</div>
-        <div class="v">${stats.maneuverability}</div>
-        <div class="k">Pilot Skill</div>
-        <div class="v"><input id="pilotSkillInput" type="number" min="0" max="10" value="${state.pilotSkill}" style="width:60px;" /></div>
-        <div class="k">Total Maneuverability</div>
-        <div class="v" style="color:var(--accent); font-weight:700;">${stats.pilotManeuverability}</div>
-      </div>`;
-  
-  if(stats.weapons.length > 0){
-    summaryHtml += `<div class="small" style="margin-top:8px; margin-bottom:4px;"><b>Weapons (${stats.weapons.length})</b></div>`;
-    summaryHtml += `<ul class="list" style="margin-top:2px;">`;
-    for(const w of stats.weapons){
-      const status = w.hp > 0 ? `<span style="color:var(--ok);">Online</span>` : `<span style="color:var(--danger);">Offline</span>`;
-      summaryHtml += `<li>${w.name}: ${w.damage} dmg (${w.hp}/${w.hpMax} HP) ${status}</li>`;
-    }
-    summaryHtml += `</ul>`;
-  }
-  
-  summaryHtml += `</div>`;
-  
   if(idx === null || idx === undefined){
-    elDetails.innerHTML = summaryHtml + `<div class="warn">Click a placed room to view its full stats.</div>`;
+    elDetails.innerHTML = `<div class="warn">Click a placed room to view its full stats.</div>`;
     return;
   }
   const instanceId = state.grid.cells[idx];
   if(!instanceId){
     const {r,c} = cellToRC(idx);
-    elDetails.innerHTML = summaryHtml + `
+    elDetails.innerHTML = `
       <div class="warn">Cell (${r+1}, ${c+1}) is empty.</div>
       <div class="hint">Select a room in Inventory and click this cell to place it.</div>
     `;
@@ -530,12 +783,12 @@ function renderDetails(){
   }
   const inst = state.placed.get(instanceId);
   if(!inst){
-    elDetails.innerHTML = summaryHtml + `<div class="warn">Room not found.</div>`;
+    elDetails.innerHTML = `<div class="warn">Room not found.</div>`;
     return;
   }
   const {r,c} = cellToRC(idx);
 
-  elDetails.innerHTML = summaryHtml + `
+  elDetails.innerHTML = `
     <div class="row" style="justify-content:space-between; align-items:flex-start;">
       <div>
         <div class="tag">${inst.type}</div>
@@ -592,14 +845,7 @@ function renderDetails(){
     renderGrid();
   });
 
-  const pilotSkillInput = document.getElementById("pilotSkillInput");
-  if(pilotSkillInput){
-    pilotSkillInput.addEventListener("input", (e) => {
-      const v = Number(e.target.value);
-      state.pilotSkill = Math.max(0, Math.min(10, isFinite(v) ? v : state.pilotSkill));
-      renderDetails();
-    });
-  }
+  // Pilot skill input now lives in the summary panel.
 }
 
 // ---------- Grid resize ----------
@@ -702,3 +948,54 @@ document.getElementById("btnImport").addEventListener("click", () => {
   initGrid();
   renderAll();
 })();
+
+// --- Collapsible: Room Catalog ---
+if(elToggleCatalog && elCatalogPanel){
+  elToggleCatalog.addEventListener("click", () => {
+    const isCollapsed = elCatalogPanel.classList.toggle("collapsed");
+    elToggleCatalog.setAttribute("aria-expanded", String(!isCollapsed));
+    elToggleCatalog.textContent = isCollapsed ? "Expand" : "Collapse";
+  });
+}
+
+// --- Summary controls ---
+if(elShipSize){
+  elShipSize.addEventListener("change", () => {
+    const v = Number(elShipSize.value);
+    if(v === 6 || v === 9 || v === 12){
+      state.shipMaxRooms = v;
+      renderSummary();
+    }
+  });
+}
+
+if(elBtnResetSurge){
+  elBtnResetSurge.addEventListener("click", () => {
+    resetSurge();
+    renderSummary();
+  });
+}
+
+if(elBtnTuneSelected){
+  elBtnTuneSelected.addEventListener("click", () => {
+    const idx = state.selectedCellIndex;
+    if(idx === null || idx === undefined){
+      alert("Select a placed room on the grid first.");
+      return;
+    }
+    const instanceId = state.grid.cells[idx];
+    if(!instanceId){
+      alert("Selected cell is empty.");
+      return;
+    }
+    if(state.tunedRooms.has(instanceId)){
+      alert("This room is already tuned.");
+      return;
+    }
+    const ok = tuneRoom(instanceId, { cost: 1, boost: { maneuverability: 1 } });
+    if(ok){
+      state.tunedRooms.add(instanceId);
+      renderAll();
+    }
+  });
+}

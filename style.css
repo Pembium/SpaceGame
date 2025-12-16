@@ -52,6 +52,11 @@ header .sub{ color:var(--muted); font-size:12px; }
 .panel .hd h2{ margin:0; font-size:13px; font-weight:700; letter-spacing:0.3px; }
 .panel .bd{ padding:12px 14px; }
 
+/* Collapsible panel behavior */
+.panel.collapsed .bd{ display:none; }
+.panel.collapsed{ border-radius:14px; }
+.panel.collapsed .hd{ border-bottom:none; }
+
 .row{display:flex; gap:10px; flex-wrap:wrap; align-items:center}
 label{font-size:12px; color:var(--muted)}
 input[type="number"], select, input[type="text"]{
@@ -194,6 +199,17 @@ input[type="number"]{width:96px}
 }
 .kv .k{color:var(--muted)}
 .kv .v{color:var(--text)}
+/* Wide summary grid: spread items horizontally */
+.kvWide{
+  display:grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap:12px;
+}
+.kvItem{
+  display:grid;
+  grid-template-columns: 110px 1fr;
+  gap:6px 10px;
+}
 .list{
   margin:6px 0 0 0;
   padding-left:18px;
@@ -208,4 +224,85 @@ input[type="number"]{width:96px}
 @media (max-width: 1100px){
   .wrap{grid-template-columns: 1fr; }
   .gridWrap{height:auto; min-height:480px;}
+}
+
+/* Mini grid for ship layout preview */
+.miniGrid{
+  display:grid;
+  gap:4px;
+  background: rgba(11,16,32,0.35);
+  padding:10px;
+  border-radius:8px;
+}
+.miniCell{
+  background: linear-gradient(180deg, rgba(24,36,74,0.75), rgba(18,26,51,0.6));
+  border:1px solid rgba(34,48,94,0.9);
+  border-radius:6px;
+  min-height:36px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:10px;
+  font-weight:700;
+  color:var(--text);
+  position:relative;
+}
+.miniCell.empty{
+  background: rgba(24,36,74,0.25);
+  border-style:dashed;
+  border-color: rgba(34,48,94,0.7);
+}
+.miniCell.tuned::before{
+  content:'⚡';
+  position:absolute;
+  top:2px;
+  right:2px;
+  font-size:8px;
+  color:var(--accent);
+}
+
+/* Rooms management grid */
+.roomsGrid{
+  display:grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap:12px;
+}
+.roomCard{
+  background: rgba(11,16,32,0.55);
+  border:1px solid var(--line);
+  border-radius:10px;
+  padding:10px;
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+}
+.roomCard.tuned{
+  border-color: rgba(110,168,255,0.7);
+  box-shadow: 0 0 12px rgba(110,168,255,0.3);
+}
+.roomCard .roomHeader{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:8px;
+}
+.roomCard .roomTitle{
+  font-size:13px;
+  font-weight:700;
+  margin:0;
+}
+.roomCard .roomHP{
+  display:flex;
+  gap:6px;
+  align-items:center;
+  font-size:12px;
+}
+.roomCard .roomHP input{
+  width:50px;
+  padding:4px 6px;
+}
+.roomCard .abilities{
+  font-size:11px;
+  color:var(--muted);
+  line-height:1.3;
 }
